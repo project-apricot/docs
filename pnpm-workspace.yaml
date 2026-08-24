@@ -1,0 +1,7 @@
+# pnpm 11 blocks postinstall build scripts by default; fumadocs-mdx pulls in esbuild.
+allowBuilds:
+  esbuild: true
+
+minimumReleaseAgeExclude:
+  - fumadocs-core@16.15.1
+  - fumadocs-ui@16.15.1

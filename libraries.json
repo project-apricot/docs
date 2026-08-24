@@ -1,0 +1,115 @@
+{
+  "site": {
+    "org": "project-apricot",
+    "repo": "docs",
+    "ogCacheKey": "1"
+  },
+  "sections": [
+    {
+      "id": "foundations",
+      "title": "Foundations",
+      "description": "Contracts and primitives the other libraries build on."
+    },
+    {
+      "id": "services",
+      "title": "Services",
+      "description": "How a service finds, authenticates and talks to its peers."
+    },
+    {
+      "id": "aspnetcore",
+      "title": "ASP.NET Core",
+      "description": "Extensions that only make sense inside a web host."
+    },
+    {
+      "id": "data",
+      "title": "Data",
+      "description": "Storage, queries and the secrets that protect them."
+    }
+  ],
+  "libraries": [
+    {
+      "slug": "error-definitions",
+      "name": "Error Definitions",
+      "section": "foundations",
+      "description": "One error contract for a fleet of services: a canonical classification, RFC 9457 problem documents, and a reader for consuming another service's failures."
+    },
+    {
+      "slug": "core-utility",
+      "name": "Core Utility",
+      "section": "foundations",
+      "description": "Zero-dependency utilities extending the .NET base class library: URL-safe hashing, cryptographically strong random strings, and small URL helpers."
+    },
+    {
+      "slug": "id-generation",
+      "name": "Id Generation",
+      "section": "foundations",
+      "description": "Prefixed string identifiers for what you hand to a client, and time-ordered UUIDv7 for the keys your database orders rows by."
+    },
+    {
+      "slug": "intl",
+      "name": "Intl",
+      "section": "foundations",
+      "description": "Message localization for .NET: locale-aware lookup with named placeholder substitution over pluggable translation sources and stores."
+    },
+    {
+      "slug": "discovery-client",
+      "name": "Discovery Client",
+      "section": "services",
+      "description": "Static service discovery: one declarative catalogue resolved to URLs per hosting environment, with ASP.NET Core and YAML integration."
+    },
+    {
+      "slug": "self-definition",
+      "name": "Self Definition",
+      "section": "services",
+      "description": "Lets a service state its own external base address, bound from configuration and validated at startup, so code building absolute links never guesses the public origin."
+    },
+    {
+      "slug": "authentication",
+      "name": "Authentication",
+      "section": "services",
+      "description": "Both directions of a service's authentication from one settings section: the tokens it accepts, and the client credentials tokens it presents to the services it calls."
+    },
+    {
+      "slug": "grpc",
+      "name": "gRPC",
+      "section": "services",
+      "description": "A gRPC hop that keeps the error: the kind, code and payload a service threw are the ones its caller catches."
+    },
+    {
+      "slug": "aspnet-extensions",
+      "name": "ASP.NET Core Extensions",
+      "section": "aspnetcore",
+      "description": "General-purpose ASP.NET Core extensions: non-buffering streaming uploads, query parameters required at the routing layer, CORS, forwarded headers and cookie policy."
+    },
+    {
+      "slug": "captcha",
+      "name": "Captcha",
+      "section": "aspnetcore",
+      "description": "reCAPTCHA, hCaptcha and Turnstile behind one interface, with each provider's answer normalised and judged against what an endpoint declared it needs."
+    },
+    {
+      "slug": "razor-engine",
+      "name": "Razor Engine",
+      "section": "aspnetcore",
+      "description": "Renders a Razor view to a string outside the MVC result pipeline, for e-mail bodies and other templated output with no request in flight."
+    },
+    {
+      "slug": "data-ops",
+      "name": "Data Operations",
+      "section": "data",
+      "description": "SQL declared in XML and executed with Dapper: operations addressed by group and name, written per database engine, with transactions that span several of them."
+    },
+    {
+      "slug": "data-protection",
+      "name": "Data Protection",
+      "section": "data",
+      "description": "Relational storage for the ASP.NET Core Data Protection key ring, using plain ADO.NET, with dialects for MySQL, PostgreSQL, SQL Server and SQLite."
+    },
+    {
+      "slug": "password-hasher",
+      "name": "Password Hasher",
+      "section": "data",
+      "description": "PBKDF2-HMAC password hashing with per-hash salt and iteration metadata, constant-time verification, and rehash-on-verify signalling."
+    }
+  ]
+}

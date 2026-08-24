@@ -1,0 +1,5 @@
+{
+  "title": "Core Utility",
+  "description": "Zero-dependency utilities extending the .NET base class library.",
+  "pages": ["index", "usage"]
+}

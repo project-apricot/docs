@@ -1,0 +1,24 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+
+@theme {
+  /* The literal brand yellow. Used for the mark and for fills that carry dark text on top. */
+  --color-brand: #e9b940;
+}
+
+/*
+ * Fumadocs uses --color-fd-primary for both button fills and active link text. The brand yellow
+ * is ~1.9:1 on white, so it is fine as a fill under near-black text but fails AA as link text.
+ * Light mode therefore uses a darker amber for primary and keeps --color-brand for the mark;
+ * dark mode can use the real brand colour, where it passes comfortably.
+ */
+:root {
+  --color-fd-primary: oklch(0.55 0.12 75);
+}
+
+.dark {
+  --color-fd-primary: oklch(0.82 0.13 85);
+}
