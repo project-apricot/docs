@@ -76,6 +76,12 @@
       "description": "A gRPC hop that keeps the error: the kind, code and payload a service threw are the ones its caller catches."
     },
     {
+      "slug": "mailer",
+      "name": "Mailer",
+      "section": "services",
+      "description": "Sending mail from .NET: named accounts declared in one settings section, each naming the transport that carries it, with SMTP over MailKit and results instead of exceptions."
+    },
+    {
       "slug": "aspnet-extensions",
       "name": "ASP.NET Core Extensions",
       "section": "aspnetcore",
