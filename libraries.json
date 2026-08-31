@@ -70,6 +70,12 @@
       "description": "Both directions of a service's authentication from one settings section: the tokens it accepts, and the client credentials tokens it presents to the services it calls."
     },
     {
+      "slug": "access-authorization",
+      "name": "Access Authorization",
+      "section": "services",
+      "description": "Deny by default, decided by an ordered pipeline of rules where statically assigned accesses are only one source, answering both whether an access is allowed and which accesses are."
+    },
+    {
       "slug": "grpc",
       "name": "gRPC",
       "section": "services",
