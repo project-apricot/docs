@@ -82,6 +82,12 @@
       "description": "A gRPC hop that keeps the error: the kind, code and payload a service threw are the ones its caller catches."
     },
     {
+      "slug": "agentic",
+      "name": "Agentic",
+      "section": "services",
+      "description": "Declare an AI tool once, beside the code that runs it, as an AIFunction: offered to an in-process agent loop, over MCP and over gRPC, gated by the host's own authorization."
+    },
+    {
       "slug": "mailer",
       "name": "Mailer",
       "section": "services",
