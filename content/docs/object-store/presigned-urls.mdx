@@ -1,0 +1,117 @@
+---
+title: Presigned URLs
+description: Letting a browser or a mobile app upload and download directly, without credentials or a trip through your service.
+---
+
+# Presigned URLs
+
+A presigned URL lets its holder perform one operation on one object, without credentials of their own, until it
+expires. The usual shape: your service decides who may do what and signs a URL, and the client talks to the
+store directly, so the bytes never pass through your service.
+
+```csharp
+var upload = await store.CreateUploadUrlAsync("reports/q3.pdf", new PresignedUploadOptions
+{
+    ContentType = "application/pdf",
+    Expiry = TimeSpan.FromMinutes(10),
+});
+```
+
+Signing is local arithmetic: no request is made, and nothing checks that the object exists. A URL for a missing
+object fails only when it is used.
+
+> **Note.** The URL is a **bearer credential** until it expires. `PresignedRequest.ToString()` does not print
+> it. Send it to the person it was made for and nowhere else, and do not log it.
+
+## Uploading
+
+The client sends the request with `Method` to `Url`, and **every header in `RequiredHeaders`, exactly as
+given**: they were part of what was signed, and the store refuses a request that differs.
+
+```js
+await fetch(upload.url, { method: upload.method, headers: upload.requiredHeaders, body: file });
+```
+
+A signed URL cannot limit an upload's size. For that, use a form.
+
+## Uploading with a size limit
+
+```csharp
+var form = await store.CreateUploadFormAsync("avatars/42.png", new PresignedPostOptions
+{
+    ContentType = "image/png",
+    MinimumSize = 1,
+    MaximumSize = 1_000_000,
+});
+```
+
+The client posts `form.Fields`, in order, then the file as a field named `file`, as `multipart/form-data`, to
+`form.Url`. The store itself holds the upload to the key, the content type and the size range that were signed
+— it is the only presigned upload that does.
+
+```js
+const data = new FormData();
+for (const [name, value] of Object.entries(form.fields)) data.append(name, value);
+data.append("file", file);          // last
+await fetch(form.url, { method: "POST", body: data });
+```
+
+## Downloading
+
+```csharp
+var download = await store.CreateDownloadUrlAsync("reports/q3.pdf", new PresignedDownloadOptions
+{
+    ContentDisposition = "attachment; filename=\"q3.pdf\"",
+});
+```
+
+`ContentDisposition` and `ContentType` override what the object is served with, and are part of the signature.
+
+## Multipart, for large uploads
+
+A client with something too large for one request uploads it in parts, straight to the store:
+
+```csharp
+var upload = await store.StartMultipartUploadAsync("big.bin");
+
+// per part, as the client asks for it
+var signed = await store.CreatePartUploadUrlAsync(upload, partNumber);
+
+// the client PUTs the bytes to signed.Url and reports the ETag header of the answer;
+// then, once every part is in:
+await store.CompleteMultipartUploadAsync(upload, parts);   // or AbortMultipartUploadAsync
+```
+
+Hold on to the `MultipartUpload` between requests, or at least its key and upload id. An upload nobody completes
+is kept, and billed, until it is aborted — a bucket lifecycle rule for incomplete uploads is a sensible
+backstop.
+
+## Lifetime
+
+`Expiry` defaults to the store's `PresignedExpiry`, and may not exceed its `MaxPresignedExpiry`. A request
+beyond the maximum throws with `ObjectStoreErrorCode.InvalidRequest` instead of being quietly shortened, so
+nobody builds on a lifetime they did not get. AWS signatures cannot last more than seven days.
+
+Signing uses the system clock, so a host whose clock is badly wrong signs URLs the store may refuse as expired
+or not yet valid.
+
+## When clients reach the server by another address
+
+A service in a cluster may reach the store as `http://minio:9000` while a browser can only reach it as
+`https://files.example.com`. A signature covers the host, so a URL signed for one does not work on the other:
+
+```jsonc
+"Settings": {
+  "ServiceUrl": "http://minio:9000",
+  "PublicServiceUrl": "https://files.example.com"
+}
+```
+
+Reads and writes from the service use `ServiceUrl`; every URL and form it hands out is signed for
+`PublicServiceUrl`.
+
+## In memory
+
+The in-memory store cannot sign: there is no server to honour a URL. Its presigning methods fail the returned
+task with `ObjectStoreErrorCode.NotSupported`. Code that hands out URLs needs a real store, even in tests — an
+S3-compatible server in a container is the usual answer.

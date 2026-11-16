@@ -1,0 +1,86 @@
+---
+title: Dependency injection
+description: Registering stores, the three ways to get one, and validation at startup.
+---
+
+# Dependency injection
+
+```csharp
+builder.Services.AddObjectStores(builder.Configuration);
+builder.Services.AddS3ObjectStoreProvider();
+```
+
+`AddObjectStores` binds the `ObjectStore` section, or a section you name, or options you declare in code
+(`AddObjectStores(options => ...)`). **No provider is registered for you**: which ones a host wants is its
+decision, and none by default means a store can never quietly resolve to something you did not choose. Order
+does not matter.
+
+## Getting a store
+
+```csharp
+// the default store
+public Uploads(IObjectStore store) { }
+
+// a named one, by key
+public Avatars([FromKeyedServices("avatars")] IObjectStore store) { }
+
+// or by name at runtime
+public Reports(IObjectStoreFactory stores) { var store = stores.GetStore(tenantName); }
+```
+
+All three reach the same shared instance: a store, and the HTTP client behind it, is built once and kept. The
+factory owns it, so do not dispose one yourself — a scope ending does not dispose it either.
+
+Any of them can be injected into a singleton directly: there is no need to take the factory first and ask it for
+a store. Take the factory only when the name is not known until the time of use, as with a tenant.
+
+Resolving a name nobody configured throws `ObjectStoreException` with `StoreNotFound`.
+
+A default store is optional. A host that sets no `DefaultStore` and has no store called `default` starts fine and
+uses its stores by name; only asking for the default — an unkeyed `IObjectStore` — fails, with that message.
+
+## Validation at startup
+
+A host that is misconfigured stops while it starts, with every problem in one message, and not on the first
+upload:
+
+- no provider is registered
+- no store is configured and no definition source is registered
+- a store names no provider, or one that is not registered
+- a provider rejects the store's settings — a missing bucket, a half-set key pair, a malformed URL
+- `DefaultStore` is set and names a store that does not exist
+- a store was declared as a bare value, which the configuration binder drops without a word
+
+Where an `IObjectStoreDefinitionSource` is registered, the checks that need to know every store relax, because
+a name that cannot be found here may still be resolved later.
+
+## Registering your own
+
+```csharp
+services.AddObjectStoreProvider<GcsObjectStoreProvider>();           // another kind of store
+services.AddObjectStoreDefinitionSource<TenantStoreSource>();        // definitions from somewhere else
+services.AddMemoryObjectStoreProvider();                             // in memory, for tests
+```
+
+The memory provider is registered under both its interface and its own type, and keeps what was written for as
+long as it lives, however many times the factory rebuilds a store:
+
+```csharp
+var written = provider.GetRequiredService<MemoryObjectStoreProvider>().GetStore("uploads");
+```
+
+## Without a container
+
+```csharp
+using var factory = new DefaultObjectStoreFactory([new S3ObjectStoreProvider()], options);
+var store = factory.GetStore("uploads");
+```
+
+Dispose the factory when done: it owns the stores it created.
+
+## Logging
+
+Nothing here logs on your behalf. A failure is an exception that names the store, the provider and an error code
+and keeps the vendor's error inside, so wherever you already log exceptions is where this one shows up, with
+everything needed to read it. The [error-definitions package](./error-definitions.mdx) turns the same exceptions
+into responses.

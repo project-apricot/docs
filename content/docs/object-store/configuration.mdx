@@ -1,0 +1,69 @@
+---
+title: Configuration
+description: Declaring stores in settings, overriding them from the environment, and keeping secrets out of the file.
+---
+
+# Configuration
+
+```jsonc
+"ObjectStore": {
+  "DefaultStore": "uploads",
+  "Stores": {
+    "uploads": { "Provider": "s3", "Settings": { "Bucket": "acme-uploads", "Region": "eu-west-1" } },
+    "avatars": { "Provider": "s3", "Settings": { "Bucket": "acme-uploads", "Prefix": "avatars" } }
+  }
+}
+```
+
+| Key | Means |
+| --- | --- |
+| `DefaultStore` | the store a lookup uses when it names none; left unset, a store called `default` |
+| `Stores:{name}:Provider` | which provider builds it, such as `s3` or `memory` |
+| `Stores:{name}:Settings` | what that provider reads. Flat, and every value is text |
+
+`Settings` must be flat: the configuration binder drops a nested object under it without complaint, which is
+why startup validation reports a store that was declared as a bare value and read as nothing.
+
+## Overriding from the environment
+
+Environment variables are configuration like any other, so a deployment can override anything in the file:
+
+```bash
+ObjectStore__DefaultStore=avatars
+ObjectStore__Stores__uploads__Settings__Bucket=prod-uploads
+ObjectStore__Stores__uploads__Settings__SecretAccessKey=...
+```
+
+It can declare a whole store the same way. Nothing here is specific to this library: it is whatever your
+`IConfiguration` contains when `AddObjectStores(configuration)` binds it, so user secrets, key vaults and other
+configuration providers work unchanged.
+
+## Secrets
+
+Keep credentials out of `appsettings.json`. Put them in the environment, in user secrets, or in a secrets
+manager that feeds configuration. With **no** keys set, an S3 store uses the AWS default credential chain —
+environment variables, a shared profile, an IAM role, or a workload identity — so a service that runs as a role
+needs no credentials in configuration at all.
+
+Messages never quote a setting's value, and neither does the settings class's `ToString`, so a credential
+cannot reach a log through a configuration error.
+
+## Stores that do not come from configuration
+
+Register an `IObjectStoreDefinitionSource` for definitions held in a database or a secrets service:
+
+```csharp
+services.AddObjectStoreDefinitionSource<TenantStoreSource>();
+```
+
+Sources are asked before configuration, and the first one holding the name wins. A source is asked once per
+store, because the store is then kept; one that talks to the network should keep a cache of its own. Where
+one is registered, startup validation can no longer tell that a name is missing, so it stops complaining
+about it.
+
+## When settings are read
+
+Once. The factory reads its settings when it is first asked for a store, builds each store the first time it is
+named, and keeps it: the HTTP client behind a store holds a connection pool and is meant to live as long as the
+process. Changing a store's settings, or rotating a credential it reads from configuration, takes a restart — as
+does anything else that holds a client, such as a database connection string.

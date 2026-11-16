@@ -1,0 +1,68 @@
+---
+title: Error definitions
+description: Reporting object store failures as RFC 9457 problem+json, and the codes a client needs text for.
+---
+
+# Error definitions
+
+`ApricotFramework.ObjectStore.ErrorDefinitions` reports object store failures through
+[ApricotFramework.ErrorDefinitions](https://projectapricot.dev/docs/error-definitions). It is a separate
+package so that choosing this object store library does not choose your error-reporting library too.
+
+```csharp
+builder.Services.AddErrorDefinitions();            // the host's call
+builder.Services.AddObjectStoreErrorDefinitions(); // this library's mapper
+app.UseExceptionHandler();                         // the host's call
+```
+
+The library contributes an `IExceptionErrorMapper` and nothing else. A mapper with no handler does nothing, so
+the host still has to call `AddErrorDefinitions` and `UseExceptionHandler`; where the handler sits in the
+pipeline is the host's decision.
+
+## What a client sees
+
+```json
+{
+  "type": "about:blank",
+  "title": "Not found",
+  "status": 404,
+  "detail": "The object was not found.",
+  "instance": "/files/report.pdf",
+  "errors": [
+    { "kind": "not_found", "code": "OBJECT_NOT_FOUND", "message": "The object was not found." }
+  ]
+}
+```
+
+## The codes
+
+| Code | Kind | Status | Raised for |
+| --- | --- | --- | --- |
+| `OBJECT_NOT_FOUND` | `not_found` | 404 | `NotFound` |
+| `OBJECT_ALREADY_EXISTS` | `already_exists` | 409 | `AlreadyExists` |
+| `OBJECT_PRECONDITION_FAILED` | `precondition_failed` | 412 | `PreconditionFailed` |
+| `OBJECT_KEY_INVALID` | `validation` | 400 | `InvalidKey` |
+| `OBJECT_REQUEST_INVALID` | `validation` | 400 | `InvalidRequest` |
+| `OBJECT_STORE_UNAVAILABLE` | `unavailable` | 503 | `Throttled`, `Unavailable`, `Timeout` |
+| `OBJECT_STORE_FAILED` | `internal` | 500 | everything else |
+
+`OBJECT_STORE_UNAVAILABLE` carries `payload.retryable: true`, so a client need not know which of the three
+causes it was.
+
+## What is deliberately the service's fault
+
+A refused credential, a bucket that does not exist, a store nobody configured, and a provider that cannot do
+what was asked all share `OBJECT_STORE_FAILED` and a **500**. They are this service's own credentials and
+configuration, and a 403 would send the caller to fix something they cannot reach. One code, not four, so the
+set a client has to write text for does not grow every time a new way to fail is recognised. The cause is in the
+log.
+
+> **Note.** Nothing from the exception reaches the response: not the message, which names settings and endpoints,
+> not the store name or the provider, which are internal labels, and not the key, which very often echoes
+> whatever the caller sent.
+
+## Doing it yourself
+
+The mapper is ordinary. To report object store failures differently, skip `AddObjectStoreErrorDefinitions` and
+register your own `IExceptionErrorMapper`. Switch on `ObjectStoreException.ErrorCode`, and return `null` for
+anything you do not recognise so the mappers after yours still get their turn.

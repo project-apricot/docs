@@ -1,0 +1,99 @@
+---
+title: S3
+description: AWS S3 and S3-compatible servers, with the settings, credentials, and how failures are classified.
+---
+
+# S3
+
+`ApricotFramework.ObjectStore.S3` backs a store with AWS S3 or any server that speaks its protocol — MinIO,
+Ceph, Cloudflare R2, RustFS and others.
+
+```csharp
+builder.Services.AddS3ObjectStoreProvider();
+```
+
+A store reaches it with `"Provider": "s3"`.
+
+## Settings
+
+| Setting | Default | Means |
+| --- | --- | --- |
+| `Bucket` | required | the bucket |
+| `Prefix` | none | every object of the store lives under it; `avatars` and `avatars/` mean the same folder |
+| `Region` | from the SDK | the AWS region, such as `eu-west-1` |
+| `ServiceUrl` | AWS | a custom endpoint, for an S3-compatible server |
+| `PublicServiceUrl` | `ServiceUrl` | the endpoint presigned URLs are signed for; see [presigned URLs](./presigned-urls.mdx) |
+| `ForcePathStyle` | `true` with a `ServiceUrl` | `host/bucket/key` rather than `bucket.host/key` |
+| `AccessKeyId`, `SecretAccessKey` | default credential chain | must be set together |
+| `SessionToken` | none | for temporary credentials |
+| `Timeout` | `00:02:00` | per request |
+| `PresignedExpiry` | `00:15:00` | how long a presigned URL works when the caller does not say |
+| `MaxPresignedExpiry` | `01:00:00` | the longest one may work, up to `7.00:00:00`, which is the limit of a signature |
+| `MultipartPartSize` | `8388608` | bytes per part of a large upload, from 5 MiB to 512 MiB: a part is held in memory while it is sent |
+| `ChecksumMode` | see below | `WhenSupported` or `WhenRequired` |
+
+Durations are written `hh:mm:ss`. A bare number is refused rather than read as days, which is what `TimeSpan`
+would make of `30`.
+
+A half-set key pair is an error and not a quiet fallback to the default chain, because falling back would hide
+the mistake. Everything is checked when the host starts, so a missing bucket stops the host and not the first
+upload.
+
+## S3-compatible servers
+
+```jsonc
+"local": {
+  "Provider": "s3",
+  "Settings": { "Bucket": "dev", "ServiceUrl": "http://localhost:9000" }
+}
+```
+
+Setting `ServiceUrl` changes two defaults to what such servers need. Path-style addressing is turned on,
+because virtual-hosted addressing needs wildcard DNS. And `ChecksumMode` becomes `WhenRequired`: version 4 of
+the AWS SDK sends a CRC checksum with every upload, and many compatible servers reject the trailing-checksum
+encoding that carries it. Real AWS wants checksums, so it defaults to `WhenSupported`. Both can be set
+explicitly.
+
+Requests are signed for `us-east-1` unless `Region` says otherwise, which compatible servers ignore but signing
+still needs.
+
+With neither `Region` nor `ServiceUrl`, the SDK looks for a region in the environment, a profile and the instance
+metadata service. If it finds none, the store fails with a configuration error naming the setting, and nothing is
+sent. On a machine with no metadata service the search can take several seconds before it gives up.
+
+## How failures are classified
+
+Every SDK failure passes through one translator, and the message carries the vendor's error code and HTTP
+status and nothing else — the SDK's own message routinely names the bucket, the endpoint and the key. The full
+exception stays as the inner exception.
+
+| SDK error | `ObjectStoreErrorCode` |
+| --- | --- |
+| `NoSuchKey`, `NoSuchUpload`, 404 | `NotFound` |
+| `NoSuchBucket` | `Configuration` |
+| 412 | `PreconditionFailed`, or `AlreadyExists` for a create-only write |
+| `AccessDenied`, `SignatureDoesNotMatch`, `InvalidAccessKeyId`, 401, 403 | `AccessDenied` |
+| `SlowDown`, 429, 503 | `Throttled` |
+| `RequestTimeout`, 408, 504, a timeout in the HTTP stack | `Timeout` |
+| other 5xx, an unreachable server | `Unavailable` |
+| `InvalidArgument`, `EntityTooLarge`, 400, 416 | `InvalidRequest` |
+| anything else | `Unknown` |
+
+A failure reading **your own** stream — a dropped upload on the way in — surfaces as it was, not as an
+unavailable store, because retrying cannot fix it.
+
+## Large uploads
+
+Ten thousand parts is the most S3 takes, so the part size is chosen for the object: when the length is known and
+ten thousand parts of the configured size would not hold it, the parts are made bigger, in whole mebibytes. For a
+stream whose length is not known, the size doubles every thousand parts. The ceiling of 512 MiB per part covers
+objects up to about 4.9 TiB, a little under the 5 TiB S3 allows; a larger one is refused before anything is sent.
+
+## Large copies
+
+A copy is one request up to 5 GB. Beyond that the provider reads the source in ranges on the server and
+assembles the copy as a multipart upload, with nothing passing through your process. Content type,
+`Content-Disposition`, `Cache-Control` and metadata come across either way.
+
+Two stores copy on the server only when they reach the same endpoint as the same identity: the same URL, region,
+access key and secret. Otherwise the content is streamed through your process, and the result is the same.

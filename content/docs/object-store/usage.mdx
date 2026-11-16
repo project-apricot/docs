@@ -1,0 +1,127 @@
+---
+title: Usage
+description: Writing, reading, listing, copying and deleting objects, and the exceptions they throw.
+---
+
+# Usage
+
+## Keys
+
+A key is relative to the store's prefix. `ObjectKey` refuses what could not be safe to hand a store: an empty
+key, a leading `/`, control characters, more than 1024 bytes of UTF-8, and `.` or `..` segments. The last one
+is not only about escaping the prefix — an HTTP client collapses those segments, so a presigned URL for
+`a/../b` would point at a different object than the one that was signed.
+
+The 1024-byte limit counts what is actually sent, so a store's prefix comes off it: with a 101-byte prefix a key
+may be 923 bytes, and a longer one is refused as `InvalidKey` before anything is sent, the same way on every
+provider.
+
+## Writing
+
+```csharp
+var info = await store.PutAsync("docs/a.txt", stream, new ObjectPutOptions
+{
+    ContentType = "text/plain",
+    Metadata = new Dictionary<string, string> { ["owner"] = "me" },
+});
+```
+
+The stream is read from its current position to the end. The S3 provider sends a small object in one request.
+A larger one, and any stream whose length is unknown, goes up as a multipart upload one part at a time, so
+memory use is one part however big the object, and an upload that fails part-way is aborted rather than left
+to be billed. The part size is scaled for you: an object too big for ten thousand parts of the configured size
+gets bigger ones, and a stream of unknown length doubles its part size every thousand parts.
+
+Writes can be conditional:
+
+```csharp
+// create-only: a second write throws ObjectAlreadyExistsException
+await store.PutAsync(key, stream, new ObjectPutOptions { IfNoneMatch = "*" });
+
+// compare-and-swap: throws with ObjectStoreErrorCode.PreconditionFailed if someone else wrote in between
+await store.PutAsync(key, stream, new ObjectPutOptions { IfMatch = info.ETag });
+```
+
+## Reading
+
+```csharp
+await using var stored = await store.GetAsync("docs/a.txt");        // throws ObjectNotFoundException
+await using var maybe  = await store.TryGetAsync("docs/a.txt");     // null when it is not there
+
+var info   = await store.GetInfoAsync("docs/a.txt");                // a HEAD: size, ETag, content type, disposition, cache control, metadata
+var exists = await store.ExistsAsync("docs/a.txt");
+
+var slice = await store.GetAsync("docs/a.txt", new ObjectGetOptions { RangeStart = 0, RangeEnd = 1023 });
+```
+
+Dispose what `GetAsync` returns: the stream may be tied to an open connection. `Info.Size` is the size of the
+whole object even when a range was read.
+
+## Listing
+
+```csharp
+await foreach (var item in store.ListAsync("reports/"))
+{
+    // pages are fetched as you read
+}
+
+var page = await store.ListPageAsync("reports/", continuationToken: null, pageSize: 100);
+```
+
+A prefix is not a folder boundary: `avatars` also matches `avatars-old/1`. Write `avatars/` when you mean the
+folder. A listing carries key, size, ETag and modification time; content type, disposition, cache control and
+metadata need a `GetInfoAsync`.
+
+## Copying and deleting
+
+```csharp
+await store.CopyAsync("a.txt", "b.txt");
+await store.CopyToAsync("a.txt", otherStore, "a.txt");   // on the server when both stores share a connection
+
+await store.DeleteAsync("a.txt");                        // idempotent: deleting what is not there succeeds
+
+var result = await store.DeleteManyAsync(keys);          // batched; failures are per key, not thrown
+```
+
+A copy keeps everything the source has: content type, `Content-Disposition`, `Cache-Control` and metadata.
+Setting any one of them in `ObjectCopyOptions` replaces all four, because the store cannot merge them: name only
+a new `CacheControl` and the copy has that and nothing else.
+
+## Multipart upload
+
+For a client that sends the parts itself, see [presigned URLs](./presigned-urls.mdx). From code:
+
+```csharp
+var upload = await store.StartMultipartUploadAsync("big.bin");
+var parts = new List<UploadedPart>();
+
+for (var n = 1; ...; n++)
+{
+    parts.Add(await store.UploadPartAsync(upload, n, partStream));
+}
+
+await store.CompleteMultipartUploadAsync(upload, parts);   // or AbortMultipartUploadAsync
+```
+
+Every part but the last is at least 5 MiB on S3. Until it is completed or aborted the store keeps — and bills
+for — what has been uploaded.
+
+## Exceptions
+
+| Exception | `ErrorCode` | Means |
+| --- | --- | --- |
+| `ObjectNotFoundException` | `NotFound` | no such object, or no such multipart upload |
+| `ObjectAlreadyExistsException` | `AlreadyExists` | a create-only write found the object there |
+| `ObjectStoreConfigurationException` | `Configuration` | settings unusable, or the bucket does not exist |
+| `ObjectStoreException` | `PreconditionFailed` | an `IfMatch` did not hold |
+| | `InvalidKey`, `InvalidRequest` | the key or the request is not acceptable |
+| | `AccessDenied` | the store refused this service's own credentials |
+| | `Throttled`, `Unavailable`, `Timeout` | transient: `IsTransient()` is true |
+| | `StoreNotFound` | no store is configured under that name |
+| | `NotSupported` | the provider cannot do it, such as presigning in memory |
+| | `Unknown` | not classified |
+
+Codes are only ever added, so a switch that handles the ones it knows and treats the rest as a failure keeps
+working. The message names the store and never a setting value, and the vendor's error is the inner exception.
+
+Cancellation you asked for is never wrapped: it throws `OperationCanceledException` as it would anywhere else.
