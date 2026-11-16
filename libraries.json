@@ -128,6 +128,12 @@
       "name": "Password Hasher",
       "section": "data",
       "description": "PBKDF2-HMAC password hashing with per-hash salt and iteration metadata, constant-time verification, and rehash-on-verify signalling."
+    },
+    {
+      "slug": "object-store",
+      "name": "Object Store",
+      "section": "data",
+      "description": "Object storage from .NET: named stores that each bind one bucket and key prefix, over AWS S3 and S3-compatible servers, with presigned URLs and forms, multipart upload, and exceptions in place of vendor errors."
     }
   ]
 }
