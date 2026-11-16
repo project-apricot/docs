@@ -1,0 +1,13 @@
+{
+  "title": "Object Store",
+  "description": "Object storage from .NET: named stores over S3 and S3-compatible servers, presigned URLs, multipart upload, and exceptions instead of vendor errors.",
+  "pages": [
+    "index",
+    "usage",
+    "configuration",
+    "s3",
+    "presigned-urls",
+    "dependency-injection",
+    "error-definitions"
+  ]
+}

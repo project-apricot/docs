@@ -1,0 +1,64 @@
+---
+title: Object Store
+description: Object storage from .NET, with named stores and pluggable providers.
+---
+
+# Object Store
+
+Object storage, configured the way a connection string is: named stores in one settings section, each
+binding one bucket and a key prefix. Callers address an object by its key and never see the bucket, the
+endpoint or the credentials, so moving a store somewhere else is a settings change and not a code change.
+
+## Packages
+
+| Package | What it is |
+| --- | --- |
+| `ApricotFramework.ObjectStore` | The zero-dependency core: the store contract, models, exceptions, an in-memory store |
+| `ApricotFramework.ObjectStore.S3` | AWS S3 and S3-compatible servers (MinIO, Ceph, R2 and others), over the AWS SDK |
+| `ApricotFramework.ObjectStore.DependencyInjection` | Stores bound from configuration with environment overrides, startup validation, default and keyed resolution |
+| `ApricotFramework.ObjectStore.ErrorDefinitions` | Optional: reports failures as RFC 9457 problem+json through [Error Definitions](../error-definitions/index.mdx) |
+
+None of these needs ASP.NET Core except the last: the integration package depends only on
+`Microsoft.Extensions.*`, so a worker or console host can use the rest. The core alone needs no container
+— `new DefaultObjectStoreFactory(...)` works on its own.
+
+## Install
+
+```bash
+dotnet add package ApricotFramework.ObjectStore
+dotnet add package ApricotFramework.ObjectStore.S3
+dotnet add package ApricotFramework.ObjectStore.DependencyInjection
+```
+
+## The model
+
+Four things, and the seams between them are the whole design:
+
+- A **store** is one bucket and a key prefix, addressed by name. It reads, writes, lists, copies and signs.
+- A **provider** builds stores of one kind. It is stateless and receives the definition on every build, so one
+  registration serves any number of buckets and endpoints.
+- A **definition** is a name, a provider, and that provider's settings. Where they come from is open: the
+  `ObjectStore` configuration section, or an `IObjectStoreDefinitionSource` backed by a database or a secrets
+  service.
+- An **exception** says what failed, in this library's terms. The AWS SDK's own error stays inside it.
+
+```csharp
+await store.PutAsync("reports/q3.pdf", stream, new ObjectPutOptions { ContentType = "application/pdf" });
+
+await using var stored = await store.GetAsync("reports/q3.pdf");
+```
+
+> **Note.** A failure is an exception, unlike [Mailer](../mailer/index.mdx), which returns results. Storing a
+> file is rarely something a caller carries on without, so a missing object or a refused write interrupts the
+> flow the way it would with any other I/O. Only transient failures are worth catching close to the call:
+> `ObjectStoreException.IsTransient()` says which.
+
+## What is not here
+
+No bucket creation or lifecycle management: the library expects buckets to exist, and operating them is the
+job of your infrastructure code. No server-side encryption, versioning or object-lock settings yet. No
+filesystem or Azure Blob provider, although the contract is not shaped around S3 and nothing stops one.
+
+Continue with [usage](./usage.mdx), [configuration](./configuration.mdx), [S3](./s3.mdx),
+[presigned URLs](./presigned-urls.mdx), [dependency injection](./dependency-injection.mdx) or
+[error definitions](./error-definitions.mdx).
