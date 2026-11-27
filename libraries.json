@@ -24,6 +24,11 @@
       "id": "data",
       "title": "Data",
       "description": "Storage, queries and the secrets that protect them."
+    },
+    {
+      "id": "deployment",
+      "title": "Deployment",
+      "description": "Packaging and deploying services."
     }
   ],
   "libraries": [
@@ -134,6 +139,12 @@
       "name": "Object Store",
       "section": "data",
       "description": "Object storage from .NET: named stores that each bind one bucket and key prefix, over AWS S3 and S3-compatible servers, with presigned URLs and forms, multipart upload, and exceptions in place of vendor errors."
+    },
+    {
+      "slug": "helm-workload",
+      "name": "Helm Workload",
+      "section": "deployment",
+      "description": "One Helm chart for Deployments, StatefulSets, Jobs and CronJobs, driven entirely by values."
     }
   ]
 }
