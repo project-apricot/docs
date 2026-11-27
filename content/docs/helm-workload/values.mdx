@@ -1,0 +1,225 @@
+---
+title: Values
+description: Every value the chart accepts, with its default.
+---
+
+# Values
+
+The schema in `values.schema.json` rejects keys that are not listed here, and checks types and allowed values.
+Values are grouped by their top-level key; keys that stand alone come first. Enable exactly one of the
+`deployment`, `statefulset`, `job` and `cronjob` groups.
+
+## General
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `nameOverride` | string | `""` | Override the name used for the `app.kubernetes.io/name` label and the container name. Defaults to the release name. |
+| `fullnameOverride` | string | `""` | Override the name of every generated object. Defaults to the release name. |
+| `commonLabels` | object | `{}` | Labels added to every generated object. The pod template gets them too. |
+| `commonAnnotations` | object | `{}` | Annotations added to every generated object (not to pod templates; use `podAnnotations` for those). |
+| `urls` | object | `{}` | Free-form map of base URLs, keyed by any name you choose. Available to `tpl` strings in `configMaps.*.data` and `ingress.host`, e.g. `'{{ index .Values.urls "api" }}'`. |
+| `replicaCount` | int | `1` | Number of replicas for a Deployment or StatefulSet. Ignored while `autoscaling.enabled` is true. |
+| `env` | list | `[]` | Environment variables for the main container (standard Kubernetes `env` entries). |
+| `extraConfigMapRefs` | list | `[]` | Names of existing ConfigMaps added to `envFrom`. |
+| `extraSecretRefs` | list | `[]` | Names of existing Secrets added to `envFrom`. |
+| `configMaps` | object | `{}` | ConfigMaps to generate, keyed by name. The object is named `<fullname>-<key>`. Values go through `tpl`. |
+| `externalSecrets` | object | `{}` | ExternalSecrets (External Secrets Operator) to generate, keyed by name. The ExternalSecret and the Secret it creates are named `<fullname>-<key>`. |
+| `persistentVolumeClaims` | object | `{}` | PersistentVolumeClaims to generate, keyed by name. Always rendered when defined, and annotated `helm.sh/resource-policy: keep`. Mounted automatically when `mountPath` is set. |
+| `ports` | list | `[]` | Named container ports. Shared by every workload kind; the Service and Ingress refer to them by name. |
+| `resources` | object | `{}` | Container resources. |
+| `livenessProbe` | object | `{}` | Liveness probe (any valid Kubernetes probe). Deployment and StatefulSet only. |
+| `readinessProbe` | object | `{}` | Readiness probe (any valid Kubernetes probe). Deployment and StatefulSet only. |
+| `startupProbe` | object | `{}` | Startup probe (any valid Kubernetes probe). Deployment and StatefulSet only. |
+| `lifecycle` | object | `{}` | Container lifecycle hooks. |
+| `command` | list | `[]` | Container entrypoint override. |
+| `args` | list | `[]` | Container arguments. |
+| `podAnnotations` | object | `{}` | Annotations added to the pod template. |
+| `podLabels` | object | `{}` | Labels added to the pod template, next to the selector labels. |
+| `initContainers` | list | `[]` | Extra init containers (standard Kubernetes container specs). |
+| `extraContainers` | list | `[]` | Extra sidecar containers (standard Kubernetes container specs). |
+| `nodeSelector` | object | `{}` | Node selector. |
+| `affinity` | object | `{}` | Affinity rules. |
+| `tolerations` | list | `[]` | Tolerations. |
+| `topologySpreadConstraints` | list | `[]` | Topology spread constraints. |
+| `priorityClassName` | string | `""` | PriorityClass name. |
+| `terminationGracePeriodSeconds` | int or empty | `""` | Termination grace period in seconds. Empty uses the Kubernetes default. |
+| `extraVolumes` | list | `[]` | Extra volumes (standard Kubernetes volume specs), e.g. an `emptyDir` for `/tmp`. |
+| `extraVolumeMounts` | list | `[]` | Extra volume mounts for the main container. Names must match `extraVolumes`. |
+
+## `provenance`
+
+Deployment provenance, rendered as OCI image-spec annotations on the workload object. Only non-empty fields are emitted. Typically written by a deploy pipeline.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `provenance.git.source` | string | `""` | Repository URL. Rendered as `org.opencontainers.image.source`. |
+| `provenance.git.revision` | string | `""` | Commit SHA. Rendered as `org.opencontainers.image.revision`. |
+| `provenance.git.ref` | string | `""` | Branch or tag name. Rendered as `org.opencontainers.image.ref.name`. |
+| `provenance.git.version` | string | `""` | Semantic version. Rendered as `org.opencontainers.image.version`. |
+| `provenance.deploy.actor` | string | `""` | Who or what triggered the deploy. Rendered as `org.opencontainers.image.authors`. |
+| `provenance.deploy.timestamp` | string | `""` | RFC 3339 deploy time. Rendered as `org.opencontainers.image.created`. |
+
+## `cluster`
+
+References to objects that already exist in the cluster. Everything defaults to empty, so nothing is assumed about the cluster the chart is installed into.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `cluster.clusterSecretStore` | string | `""` | Name of the External Secrets (ESO) store used by `externalSecrets` entries that do not set their own `secretStoreRef`. Required as soon as one such entry is enabled. |
+| `cluster.imagePullSecret` | string | `""` | Name of an image pull secret added to every pod. Overridden by `image.pullSecret`. |
+| `cluster.ingressClassName` | string | `""` | `ingressClassName` used when `ingress.className` is empty. Empty leaves the field out, so the cluster's default IngressClass applies. |
+| `cluster.certIssuer` | string | `""` | cert-manager issuer used when `ingress.tls.issuer` is empty. Empty emits no cert-manager annotation. |
+| `cluster.certIssuerKind` | string | `"ClusterIssuer"` | cert-manager issuer kind (`ClusterIssuer` or `Issuer`). |
+| `cluster.localStorageClassName` | string | `""` | StorageClass used for PVCs and `volumeClaimTemplates` that do not set one. Empty leaves the field out, so the cluster's default StorageClass applies. |
+
+## `image`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `image.repository` | string | `"not-set"` | Container image repository. |
+| `image.tag` | string | `"not-set"` | Image tag. |
+| `image.digest` | string | `""` | Image digest (`sha256:...`). When set it is appended, giving `repository:tag@digest`. |
+| `image.pullPolicy` | string | `"IfNotPresent"` | Image pull policy. |
+| `image.pullSecret` | string | `""` | Name of a pre-created pull secret. Takes precedence over `cluster.imagePullSecret`. |
+
+## `externalSecretDefaults`
+
+Fields of an ExternalSecret that the External Secrets operator may fill in when they are omitted, rendered explicitly so the live object matches the manifest and GitOps tools (Argo CD, Flux) report no drift. Set a field to `""` to leave it out, for an operator version that does not know it.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `externalSecretDefaults.deletionPolicy` | string | `"Retain"` | `spec.target.deletionPolicy`. The CRD defaults it to `Retain`. |
+| `externalSecretDefaults.conversionStrategy` | string | `"Default"` | `remoteRef.conversionStrategy`. Operators that default it use `Default`. |
+| `externalSecretDefaults.decodingStrategy` | string | `"None"` | `remoteRef.decodingStrategy`. Operators that default it use `None`. |
+| `externalSecretDefaults.metadataPolicy` | string | `"None"` | `remoteRef.metadataPolicy`. Operators that default it use `None`. |
+| `externalSecretDefaults.nullBytePolicy` | string | `""` | `remoteRef.nullBytePolicy` (`Ignore` or `Fail`). No operator version is known to default it, so it is left out; set it to the value your operator writes if it does fill it in. |
+
+## `deployment`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `deployment.enabled` | bool | `true` | Render a Deployment. |
+| `deployment.annotations` | object | `{}` | Annotations on the Deployment object (not on its pods). |
+| `deployment.strategy` | object | `{}` | Deployment strategy (`type`, `rollingUpdate`). Empty uses the Kubernetes default. |
+| `deployment.revisionHistoryLimit` | int or empty | `""` | Number of old ReplicaSets to keep. Empty uses the Kubernetes default. |
+| `deployment.minReadySeconds` | int or empty | `""` | Seconds a new pod must be ready before it counts as available. Empty uses the Kubernetes default. |
+
+## `statefulset`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `statefulset.enabled` | bool | `false` | Render a StatefulSet. |
+| `statefulset.serviceName` | string | `""` | Governing Service name. Defaults to `<fullname>`, or `<fullname>-headless` when `headlessService.enabled`. Immutable on an existing StatefulSet. |
+| `statefulset.annotations` | object | `{}` | Annotations on the StatefulSet object (not on its pods). |
+| `statefulset.podManagementPolicy` | string | `""` | `OrderedReady` or `Parallel`. Empty uses the Kubernetes default. |
+| `statefulset.updateStrategy` | object | `{}` | Update strategy (`type`, `rollingUpdate`). Empty uses the Kubernetes default. |
+| `statefulset.persistentVolumeClaimRetentionPolicy` | object | `{}` | Retention of PVCs created from `volumeClaimTemplates` (`whenDeleted`, `whenScaled`). |
+| `statefulset.headlessService.enabled` | bool | `false` | Also render a headless Service named `<fullname>-headless`. |
+| `statefulset.volumeClaimTemplates` | object | `{}` | Per-replica volumes, keyed by name. Mounted automatically at `mountPath`. |
+
+## `job`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `job.enabled` | bool | `false` | Render a Job. |
+| `job.backoffLimit` | int | `3` | Retries before the Job is marked failed. `0` is honoured. |
+| `job.ttlSecondsAfterFinished` | int | `600` | Delete the Job this many seconds after it finishes. Empty disables. |
+| `job.activeDeadlineSeconds` | int or empty | `""` | Maximum run time in seconds. Empty disables. |
+| `job.parallelism` | int or empty | `""` | Pods running in parallel. Empty uses the Kubernetes default. |
+| `job.completions` | int or empty | `""` | Successful pods needed. Empty uses the Kubernetes default. |
+| `job.restartPolicy` | string | `"OnFailure"` | `OnFailure` or `Never`. |
+| `job.annotations` | object | `{}` | Annotations on the Job object, e.g. GitOps sync hooks. |
+
+## `cronjob`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `cronjob.enabled` | bool | `false` | Render a CronJob. |
+| `cronjob.schedule` | string | `""` | Cron expression. Required when enabled. |
+| `cronjob.timeZone` | string | `""` | IANA time zone for the schedule. Empty uses the controller's time zone. |
+| `cronjob.concurrencyPolicy` | string | `"Forbid"` | `Allow`, `Forbid` or `Replace`. |
+| `cronjob.suspend` | bool | `false` | Pause scheduling without deleting the CronJob. |
+| `cronjob.startingDeadlineSeconds` | int | `300` | Seconds a missed run may still be started. `0` is honoured. |
+| `cronjob.successfulJobsHistoryLimit` | int | `3` | Completed Jobs to keep. `0` is honoured. |
+| `cronjob.failedJobsHistoryLimit` | int | `1` | Failed Jobs to keep. `0` is honoured. |
+| `cronjob.backoffLimit` | int | `3` | Retries per spawned Job. `0` is honoured. |
+| `cronjob.activeDeadlineSeconds` | int or empty | `""` | Maximum run time per spawned Job in seconds. Empty disables. |
+| `cronjob.ttlSecondsAfterFinished` | int or empty | `""` | Delete spawned Jobs this many seconds after they finish. Empty disables. |
+| `cronjob.restartPolicy` | string | `"OnFailure"` | `OnFailure` or `Never`. |
+| `cronjob.annotations` | object | `{}` | Annotations on the CronJob object (not on the Jobs it spawns). |
+
+## `serviceAccount`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `serviceAccount.create` | bool | `false` | Create a ServiceAccount named `<fullname>` (or `name`). |
+| `serviceAccount.name` | string | `""` | Use this ServiceAccount. Empty uses the namespace default unless `create` is true. |
+| `serviceAccount.annotations` | object | `{}` | Annotations on the created ServiceAccount. |
+| `serviceAccount.automountServiceAccountToken` | bool or empty | `""` | Set `automountServiceAccountToken` on the pod and the ServiceAccount. Empty leaves it unset. |
+
+## `service`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `service.enabled` | bool | `true` | Render a Service. Nothing is rendered when there are no ports to expose. |
+| `service.type` | string | `"ClusterIP"` | Service type. |
+| `service.ports` | list | `[]` | Names from `ports` to expose. Empty exposes all of them. |
+
+## `ingress`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `ingress.enabled` | bool | `false` | Render an Ingress. Requires `service.enabled`. |
+| `ingress.className` | string | `""` | IngressClass name. Defaults to `cluster.ingressClassName`. |
+| `ingress.host` | string | `""` | Host name. Goes through `tpl`, e.g. `'{{ (urlParse (index .Values.urls "api")).host }}'`. |
+| `ingress.port` | string | `"http"` | Name of the entry in `ports` to route to. |
+| `ingress.path` | string | `"/"` | Path. |
+| `ingress.pathType` | string | `"Prefix"` | `Prefix`, `Exact` or `ImplementationSpecific`. |
+| `ingress.tls.enabled` | bool | `true` | Add a TLS section. |
+| `ingress.tls.secretName` | string | `""` | TLS secret name. Defaults to `<fullname>-tls`. |
+| `ingress.tls.issuer` | string | `""` | cert-manager issuer. Defaults to `cluster.certIssuer`; with neither set no annotation is emitted. |
+| `ingress.tls.issuerKind` | string | `""` | cert-manager issuer kind. Defaults to `cluster.certIssuerKind`. |
+| `ingress.annotations` | object | `{}` | Ingress annotations. These win over the generated cert-manager annotation. |
+
+## `autoscaling`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `autoscaling.enabled` | bool | `false` | Render a HorizontalPodAutoscaler (Deployment and StatefulSet only). Removes `replicas` from the workload. |
+| `autoscaling.minReplicas` | int | `1` | Lower bound. |
+| `autoscaling.maxReplicas` | int | `3` | Upper bound. Required when enabled. |
+| `autoscaling.targetCPUUtilizationPercentage` | int | `80` | Target average CPU utilization percentage. Empty disables the metric. |
+| `autoscaling.targetMemoryUtilizationPercentage` | int or empty | `""` | Target average memory utilization percentage. Empty disables the metric. |
+| `autoscaling.behavior` | object | `{}` | HPA `behavior` block. |
+
+## `podDisruptionBudget`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `podDisruptionBudget.enabled` | bool | `false` | Render a PodDisruptionBudget (Deployment and StatefulSet only). |
+| `podDisruptionBudget.minAvailable` | int, percentage or empty | `""` | Minimum available pods (number or percentage). Set this or `maxUnavailable`. |
+| `podDisruptionBudget.maxUnavailable` | int, percentage or empty | `""` | Maximum unavailable pods (number or percentage). Set this or `minAvailable`. |
+
+## `networkPolicy`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `networkPolicy.enabled` | bool | `false` | Render a NetworkPolicy selecting this workload's pods. |
+| `networkPolicy.policyTypes` | list | `["Ingress"]` | Policy types. With `Ingress` and no `ingress` rules, all inbound traffic is denied. |
+| `networkPolicy.ingress` | list | `[]` | Ingress rules (standard NetworkPolicy `ingress` entries). |
+| `networkPolicy.egress` | list | `[]` | Egress rules (standard NetworkPolicy `egress` entries). |
+
+## `podSecurityContext`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `podSecurityContext.enabled` | bool | `true` | Set to false to render no pod securityContext. Every other key here is passed through. |
+| `podSecurityContext.runAsNonRoot` | bool | `true` | Refuse to start a container that would run as root. |
+
+## `containerSecurityContext`
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `containerSecurityContext.enabled` | bool | `true` | Set to false to render no container securityContext. Every other key here is passed through. |
+| `containerSecurityContext.allowPrivilegeEscalation` | bool | `false` | Forbid a process from gaining more privileges than its parent. |
+| `containerSecurityContext.capabilities.drop` | list | `["ALL"]` | Linux capabilities to drop. |

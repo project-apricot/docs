@@ -1,0 +1,177 @@
+---
+title: Usage
+description: Depending on the chart from an application chart, layering values, and template strings.
+---
+
+# Usage
+
+## As a dependency
+
+The intended shape is an application chart that contains no templates, only a `Chart.yaml` that names
+this chart and a `values.yaml`:
+
+```yaml
+# Chart.yaml
+apiVersion: v2
+name: my-app
+version: 0.1.0
+dependencies:
+  - name: workload
+    version: ">=0.1.0"
+    repository: oci://ghcr.io/project-apricot/helm-workload
+```
+
+```yaml
+# values.yaml
+workload:
+  image:
+    repository: registry.example.test/my-app
+  ports:
+    - name: http
+      containerPort: 8080
+```
+
+Helm hands a dependency the values under its name, so everything goes beneath `workload:`. The
+release name, not the application chart's name, becomes the name of the objects.
+
+> **Note.** A version range such as `>=0.1.0` never matches a prerelease, and it picks up every new
+> release the next time dependencies are resolved. Pin an exact version where an unreviewed upgrade is
+> not acceptable.
+
+### Choosing the values key
+
+`alias` changes the key. It is useful when many charts share a convention, or when you are moving from
+another chart and want existing values files to keep working:
+
+```yaml
+dependencies:
+  - name: workload
+    alias: service
+    version: ">=0.1.0"
+    repository: oci://ghcr.io/project-apricot/helm-workload
+```
+
+```yaml
+service:
+  image:
+    repository: registry.example.test/my-app
+```
+
+## Layering values
+
+Helm deep-merges maps across values files and replaces lists. Keep what never changes in a base file
+and put only the differences in an environment file:
+
+```bash
+helm template my-app ./my-app -f values.yaml -f environments/staging/values.yaml
+```
+
+`configMaps` and `externalSecrets` are maps keyed by name, so an environment file can change one entry
+without repeating the rest:
+
+```yaml
+# base
+workload:
+  configMaps:
+    app:
+      enabled: true
+      asEnv: true
+      data:
+        LOG_LEVEL: info
+        FEATURE_X: "off"
+```
+
+```yaml
+# staging
+workload:
+  configMaps:
+    app:
+      data:
+        LOG_LEVEL: debug
+```
+
+Lists such as `ports` and `env` are replaced as a whole, so repeat every entry when you change one.
+
+## Template strings
+
+Two places go through Helm's `tpl`, so they can refer to other values:
+
+- `configMaps.<name>.data` values
+- `ingress.host`
+
+```yaml
+workload:
+  urls:
+    api: https://api.example.test
+  ingress:
+    enabled: true
+    host: '{{ (urlParse (index .Values.urls "api")).host }}'
+  configMaps:
+    app:
+      enabled: true
+      asEnv: true
+      data:
+        API_URL: '{{ index .Values.urls "api" }}'
+```
+
+`urls` is a free-form map of strings that exists for this purpose; use any keys you like. Inside the
+chart, `.Values` is the chart's own values, so write `.Values.urls`, not `.Values.workload.urls`.
+
+Values shared by several charts can go under `global`, which Helm passes to every dependency:
+
+```yaml
+global:
+  domain: example.test
+
+workload:
+  ingress:
+    host: 'my-app.{{ .Values.global.domain }}'
+```
+
+## Provenance
+
+`provenance` records where a deployment came from. Whatever is set is added to the workload object as
+[OCI image-spec annotations](https://github.com/opencontainers/image-spec/blob/main/annotations.md),
+which makes "what is running, and who put it there" answerable from the cluster. Deploy pipelines
+typically write it:
+
+```yaml
+workload:
+  provenance:
+    git:
+      source: https://github.com/example/my-app
+      revision: 0123456789abcdef0123456789abcdef01234567
+      ref: v1.2.3
+      version: 1.2.3
+    deploy:
+      actor: ci
+      timestamp: "2026-01-02T03:04:05Z"
+```
+
+| Value | Annotation |
+| --- | --- |
+| `provenance.git.source` | `org.opencontainers.image.source` |
+| `provenance.git.revision` | `org.opencontainers.image.revision` |
+| `provenance.git.ref` | `org.opencontainers.image.ref.name` |
+| `provenance.git.version` | `org.opencontainers.image.version` |
+| `provenance.deploy.actor` | `org.opencontainers.image.authors` |
+| `provenance.deploy.timestamp` | `org.opencontainers.image.created` |
+
+They are placed on the Deployment, StatefulSet, Job or CronJob, never on the pods, so recording a new
+revision does not by itself restart anything. Annotations you set in `<kind>.annotations` win over these.
+
+## Cluster references
+
+The `cluster` block holds the names of things that already exist in the cluster. It is empty by default,
+and each key changes one behavior:
+
+| Key | When empty | When set |
+| --- | --- | --- |
+| `cluster.clusterSecretStore` | An ExternalSecret without its own `secretStoreRef` fails to render | That store is used |
+| `cluster.imagePullSecret` | No `imagePullSecrets` | Added to every pod |
+| `cluster.ingressClassName` | The cluster's default IngressClass applies | Used by every Ingress |
+| `cluster.certIssuer` | No cert-manager annotation | Added to every Ingress with TLS |
+| `cluster.localStorageClassName` | The cluster's default StorageClass applies | Used by PVCs and volume claim templates |
+
+Setting them once in a values file that every application shares keeps individual applications free of
+cluster detail.

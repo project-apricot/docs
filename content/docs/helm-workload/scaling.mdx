@@ -1,0 +1,65 @@
+---
+title: Scaling
+description: Replicas, autoscaling, disruption budgets and spreading pods.
+---
+
+# Scaling
+
+## Replicas
+
+`replicaCount` sets the number of replicas of a Deployment or StatefulSet.
+
+## Autoscaling
+
+```yaml
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+```
+
+This renders a HorizontalPodAutoscaler (`autoscaling/v2`) aimed at the Deployment or StatefulSet, and the
+chart stops setting `replicas` on it. Leave a target empty to drop that metric; at least one is required.
+Utilization is measured against the container's resource *requests*, so set `resources.requests`.
+
+Autoscaling is rejected for Jobs and CronJobs.
+
+## Disruption budgets
+
+```yaml
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+```
+
+Set `minAvailable` or `maxUnavailable`, a number or a percentage, but not both. The budget applies to
+voluntary disruptions such as node drains. It is rejected for Jobs and CronJobs.
+
+## Scheduling
+
+```yaml
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/instance: my-app
+
+nodeSelector:
+  disktype: ssd
+tolerations:
+  - key: dedicated
+    operator: Exists
+affinity: {}
+priorityClassName: important
+terminationGracePeriodSeconds: 45
+```
+
+The `app.kubernetes.io/instance` label on every pod is the release name, which makes it a convenient
+selector for spread constraints and affinity.

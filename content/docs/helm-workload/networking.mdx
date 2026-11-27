@@ -1,0 +1,104 @@
+---
+title: Networking
+description: Ports, Service, Ingress and NetworkPolicy.
+---
+
+# Networking
+
+## Ports
+
+`ports` is the one place a workload declares what it listens on. The Service and the Ingress refer to
+these entries by name:
+
+```yaml
+ports:
+  - name: http
+    containerPort: 8080
+  - name: grpc
+    containerPort: 9090
+  - name: dns
+    containerPort: 53
+    protocol: UDP
+```
+
+Port names must be 15 characters or fewer. Ports are rendered into Deployments and StatefulSets, not
+into Jobs and CronJobs.
+
+## Service
+
+A Service is rendered when `service.enabled` is true (the default) **and** there is at least one port to
+expose. A Job with no ports therefore needs no `service.enabled: false`, though it does no harm.
+
+By default every port is exposed. `service.ports` selects a subset by name, in the order given:
+
+```yaml
+service:
+  type: ClusterIP
+  ports: [http]
+```
+
+A name that is not in `ports` fails the render. The Service is named after the release, so other workloads
+can reach it at that name.
+
+## Ingress
+
+```yaml
+ingress:
+  enabled: true
+  host: my-app.example.test
+  port: http
+  path: /
+  pathType: Prefix
+  tls:
+    enabled: true
+  annotations:
+    example.test/some-annotation: "true"
+```
+
+- The Ingress routes to the Service, so `service.enabled` must be on, `ports` must not be empty, and
+  `ingress.port` must be a name in `ports` that the Service exposes (see `service.ports`).
+- `host` goes through `tpl`. See [Usage](./usage.mdx#template-strings).
+- With `tls.enabled` (the default) the Ingress gets a `tls` section whose secret is `tls.secretName`, or
+  `<release>-tls`.
+- `className` falls back to `cluster.ingressClassName`, and when both are empty the field is omitted, so
+  the cluster's default IngressClass applies.
+
+### cert-manager
+
+When TLS is on and an issuer is known, the Ingress is annotated for cert-manager. The issuer is
+`ingress.tls.issuer`, falling back to `cluster.certIssuer`; with neither, no annotation is added, which is
+what you want when the TLS secret is provisioned some other way. `issuerKind` (or
+`cluster.certIssuerKind`) chooses between `cert-manager.io/cluster-issuer` and `cert-manager.io/issuer`.
+
+Annotations you set under `ingress.annotations` win over the generated one.
+
+## NetworkPolicy
+
+```yaml
+networkPolicy:
+  enabled: true
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway
+      ports:
+        - port: 8080
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - port: 53
+          protocol: UDP
+```
+
+The policy selects this workload's pods, and `ingress` and `egress` are standard NetworkPolicy rules passed
+through unchanged.
+
+Rules for a direction that is missing from `policyTypes` would be ignored by Kubernetes, so the chart fails
+the render instead.
+
+> **Warning.** A NetworkPolicy that lists a policy type and has no rules for it denies all traffic of that
+> type. With the default `policyTypes: [Ingress]` and no `ingress` rules, nothing can reach the pods.
+> Add `Egress` to `policyTypes` only when you are ready to list everything the workload talks to, including DNS.

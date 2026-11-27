@@ -1,0 +1,180 @@
+---
+title: Configuration
+description: Environment variables, ConfigMaps, secrets and volumes.
+---
+
+# Configuration
+
+## Environment
+
+`env` takes ordinary Kubernetes entries, including `valueFrom`:
+
+```yaml
+env:
+  - name: LOG_LEVEL
+    value: info
+  - name: POD_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.name
+```
+
+`extraConfigMapRefs` and `extraSecretRefs` add objects that already exist to `envFrom`, by name:
+
+```yaml
+extraConfigMapRefs: [shared-config]
+extraSecretRefs: [shared-secrets]
+```
+
+## ConfigMaps
+
+`configMaps` is a map. Each enabled entry becomes a ConfigMap named `<release>-<key>`:
+
+```yaml
+configMaps:
+  app:
+    enabled: true
+    asEnv: true            # every key becomes an environment variable
+    data:
+      LOG_LEVEL: info
+      API_URL: '{{ index .Values.urls "api" }}'
+  settings:
+    enabled: true
+    mountPath: /app/config # every key becomes a file in this directory
+    data:
+      "settings.json": |
+        {"verbose": true}
+```
+
+- `asEnv: true` adds the ConfigMap to the container's `envFrom`.
+- `mountPath` mounts it as a read-only volume.
+- An entry with neither is still created, which suits data that something else reads.
+- Values go through `tpl` and are stored as strings, so numbers and booleans work.
+
+A change to any ConfigMap changes a checksum on the pod template, so the pods restart and pick it up.
+
+## Secrets
+
+`externalSecrets` generates [External Secrets Operator](https://external-secrets.io) `ExternalSecret`
+objects, which in turn create a Kubernetes Secret of the same name, `<release>-<key>`. The chart never
+holds a secret value, only the names of entries in your secret store:
+
+```yaml
+cluster:
+  clusterSecretStore: my-store
+
+externalSecrets:
+  creds:
+    enabled: true
+    asEnv: true
+    refreshInterval: 1h
+    remoteRefs:
+      DATABASE_URL: DATABASE_URL_IN_STORE
+      API_TOKEN: API_TOKEN_IN_STORE
+```
+
+`remoteRefs` maps the key in the generated Secret, which is also the environment variable name with
+`asEnv`, to the key in the store. `asEnv` and `mountPath` work as they do for ConfigMaps.
+
+An entry can name its own store instead of `cluster.clusterSecretStore`:
+
+```yaml
+externalSecrets:
+  creds:
+    enabled: true
+    secretStoreRef:
+      name: other-store
+      kind: SecretStore
+```
+
+With neither, the render fails and says which entry is missing a store. The External Secrets Operator and
+its CRDs must be installed in the cluster.
+
+### Working with GitOps tools
+
+Depending on its version, the operator fills in fields you left out of an ExternalSecret, such as
+`target.deletionPolicy` or `remoteRef.conversionStrategy`. The live object then has fields the manifest
+does not, and a GitOps tool reports it as out of sync forever, or has to be told to ignore them.
+
+The chart avoids that by writing those fields out itself, with the values the operator would have used:
+
+```yaml
+externalSecretDefaults:
+  deletionPolicy: Retain
+  conversionStrategy: Default
+  decodingStrategy: None
+  metadataPolicy: None
+  nullBytePolicy: ""   # left out unless you set it
+```
+
+An explicit field is stored exactly as written, so the live object and the manifest agree on any operator
+version that knows the field. Set a field to `""` to leave it out, for a version that does not know it. If
+your operator also fills in `nullBytePolicy`, set it to the value you see on a live object:
+
+```bash
+kubectl get externalsecret my-app-creds -o yaml
+```
+
+Anything still shown as a difference after this is a field the chart does not render. Report it, or ignore
+that path in your GitOps tool.
+
+## Persistent volumes
+
+`persistentVolumeClaims` is a map of claims named `<release>-<key>`. A claim with a `mountPath` is mounted
+into the container:
+
+```yaml
+persistentVolumeClaims:
+  data:
+    mountPath: /var/lib/data
+    accessModes: [ReadWriteOnce]
+    storage: 10Gi
+    storageClassName: fast       # optional
+    volumeName: pre-created-pv   # optional: bind to an existing PersistentVolume
+```
+
+Claims carry `helm.sh/resource-policy: keep`, so uninstalling the release does not delete your data.
+Override it with `annotations` if you want a claim removed. A claim is rendered whenever it is defined,
+because a toggle would make it too easy to delete data by editing a flag.
+
+Without a `storageClassName`, `cluster.localStorageClassName` applies, and without that the cluster's
+default StorageClass does.
+
+For per-replica volumes, see [StatefulSet](./workloads.mdx#statefulset).
+
+## Other volumes
+
+`extraVolumes` and `extraVolumeMounts` take standard Kubernetes entries, for volume types the chart does
+not generate. A writable `/tmp` for a read-only root filesystem is the usual case:
+
+```yaml
+containerSecurityContext:
+  readOnlyRootFilesystem: true
+
+extraVolumes:
+  - name: tmp
+    emptyDir:
+      sizeLimit: 100Mi
+
+extraVolumeMounts:
+  - name: tmp
+    mountPath: /tmp
+```
+
+ConfigMaps, secrets, claims and volume claim templates share one volume namespace by key, so a key can
+be mounted only once across them. The chart fails the render if two collide.
+
+## Containers and pods
+
+| Value | Purpose |
+| --- | --- |
+| `command`, `args` | Override the image entrypoint and arguments |
+| `resources` | Requests and limits |
+| `livenessProbe`, `readinessProbe`, `startupProbe` | Probes (Deployment and StatefulSet) |
+| `lifecycle` | `preStop` and `postStart` hooks |
+| `initContainers`, `extraContainers` | Init containers and sidecars, as standard container specs |
+| `podAnnotations`, `podLabels` | Metadata on the pod template |
+| `commonLabels`, `commonAnnotations` | Metadata on every generated object |
+| `image.digest` | Pin the image by digest, in addition to the tag |
+
+`image.pullSecret` names an image pull secret for this workload; it wins over `cluster.imagePullSecret`.
