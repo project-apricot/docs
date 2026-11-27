@@ -1,0 +1,14 @@
+{
+  "title": "Helm Workload",
+  "description": "One Helm chart for Deployments, StatefulSets, Jobs and CronJobs, driven entirely by values.",
+  "pages": [
+    "index",
+    "usage",
+    "workloads",
+    "configuration",
+    "networking",
+    "scaling",
+    "security",
+    "values"
+  ]
+}

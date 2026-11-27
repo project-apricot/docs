@@ -1,0 +1,51 @@
+---
+title: Values
+description: Every value the chart accepts, with its default.
+---
+
+# Values
+
+The schema in `values.schema.json` rejects keys that are not listed here, and checks types and allowed values.
+Values are grouped by their top-level key; keys that stand alone come first. Enable exactly one of the
+`deployment`, `statefulset`, `job` and `cronjob` groups.
+
+## General
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+{{- range .Values }}
+{{- if and (not (contains "." .Key)) (not (hasPrefix "`{\"" .Default)) }}
+| `{{ .Key }}` | {{ .Type }} | {{ .Default }} | {{ if .Description }}{{ .Description }}{{ else }}{{ .AutoDescription }}{{ end }} |
+{{- end }}
+{{- end }}
+
+{{- $prev := "" }}
+{{- $open := false }}
+{{- range .Values }}
+{{- $isChild := contains "." .Key }}
+{{- $isParent := and (not $isChild) (hasPrefix "`{\"" .Default) }}
+{{- if or $isChild $isParent }}
+{{- $top := first (splitList "." .Key) }}
+{{- if ne $top $prev }}
+{{- $prev = $top }}
+{{- $open = false }}
+
+## `{{ $top }}`
+{{ end }}
+{{- if $isParent }}
+{{ if .Description }}{{ .Description }}{{ else }}{{ .AutoDescription }}{{ end }}
+{{- else }}
+{{- if not $open }}
+{{- $open = true }}
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+{{- end }}
+| `{{ .Key }}` | {{ .Type }} | {{ .Default }} | {{ if .Description }}{{ .Description }}{{ else }}{{ .AutoDescription }}{{ end }} |
+{{- end }}
+{{- end }}
+{{- end }}
+{{- /*
+  Source of docs/values.mdx. Do not edit that file by hand: it is generated from values.yaml by helm-docs.
+  Run `make docs` after changing values.yaml; CI fails if the committed page is out of date.
+*/}}

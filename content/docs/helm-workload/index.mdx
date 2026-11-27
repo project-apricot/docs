@@ -1,0 +1,93 @@
+---
+title: Helm Workload
+description: One Helm chart for Deployments, StatefulSets, Jobs and CronJobs, driven entirely by values.
+---
+
+# Helm Workload
+
+Most services need the same handful of Kubernetes objects: a workload, a Service, an Ingress, some
+configuration, some secrets, perhaps a volume. `workload` renders them from values, so an application
+repository holds a values file and no templates, and fixing a probe default or adding a security
+setting happens once, in the chart.
+
+It renders one of four workload kinds, and everything around it:
+
+| Kind | Use it for |
+| --- | --- |
+| Deployment | Stateless services |
+| StatefulSet | Services with per-replica storage or stable identity |
+| Job | One-shot work, such as a migration |
+| CronJob | Recurring work, such as a backup |
+
+Around the workload it can render a Service, an Ingress, ConfigMaps, ExternalSecrets, PersistentVolumeClaims,
+a ServiceAccount, a HorizontalPodAutoscaler, a PodDisruptionBudget and a NetworkPolicy. Every one of them is
+opt-in except the Service, which appears as soon as the workload declares a port.
+
+## Install
+
+The chart is published as an OCI artifact:
+
+```bash
+helm install my-app oci://ghcr.io/project-apricot/helm-workload/workload \
+  --version 0.1.0 \
+  --set image.repository=registry.example.test/my-app \
+  --set image.tag=1.0.0 \
+  --set 'ports[0].name=http' \
+  --set 'ports[0].containerPort=8080'
+```
+
+More often it is used as a dependency of a small application chart. See [Usage](./usage.mdx).
+
+## A first values file
+
+```yaml
+image:
+  repository: registry.example.test/my-app
+  tag: "1.0.0"
+
+replicaCount: 2
+
+ports:
+  - name: http
+    containerPort: 8080
+
+ingress:
+  enabled: true
+  host: my-app.example.test
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+
+configMaps:
+  app:
+    enabled: true
+    asEnv: true
+    data:
+      LOG_LEVEL: info
+```
+
+That renders a Deployment named after the release, a Service on port 8080, an Ingress for
+`my-app.example.test`, and a ConfigMap whose entries become environment variables.
+
+## Design
+
+- **Values in, manifests out.** The chart has no opinions about your cluster. Everything it would
+  need to know about one, such as an ingress class or a secret store, is empty until you set it.
+- **Names you can predict.** Objects are named after the release, and generated ConfigMaps, Secrets and
+  volumes are `<release>-<key>`. Selector labels never change once a workload exists.
+- **Strict values.** The schema rejects keys it does not know, so a typo fails the render instead of
+  being ignored.
+
+## Where to go next
+
+| Page | Covers |
+| --- | --- |
+| [Usage](./usage.mdx) | Depending on the chart, layering values, template strings |
+| [Workloads](./workloads.mdx) | The four workload kinds |
+| [Configuration](./configuration.mdx) | Environment, ConfigMaps, secrets, volumes |
+| [Networking](./networking.mdx) | Ports, Service, Ingress, NetworkPolicy |
+| [Scaling](./scaling.mdx) | Replicas, autoscaling, disruption budgets, spreading |
+| [Security](./security.mdx) | Security contexts, ServiceAccounts, secrets |
+| [Values](./values.mdx) | Every value, with its default |

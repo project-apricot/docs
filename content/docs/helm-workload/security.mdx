@@ -1,0 +1,77 @@
+---
+title: Security
+description: Security contexts, ServiceAccounts and secrets.
+---
+
+# Security
+
+## Defaults
+
+Pods and containers start with a restrictive baseline:
+
+```yaml
+podSecurityContext:
+  enabled: true
+  runAsNonRoot: true
+
+containerSecurityContext:
+  enabled: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+```
+
+Every key other than `enabled` is passed through, so any `securityContext` field can be added next to the
+defaults:
+
+```yaml
+podSecurityContext:
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  readOnlyRootFilesystem: true
+```
+
+> **Note.** `runAsNonRoot` makes the kubelet refuse an image whose user is not a numeric non-root ID.
+> If an image runs as root, set `runAsUser` or choose a different image rather than turning the check off.
+
+Set `enabled: false` to render no `securityContext` at that level at all.
+
+Helm merges maps with the chart's defaults, so adding `capabilities.add` keeps `capabilities.drop: [ALL]`.
+To remove a default key, set it to `null`:
+
+```yaml
+containerSecurityContext:
+  allowPrivilegeEscalation: null
+```
+
+## ServiceAccount
+
+By default pods use the namespace's default ServiceAccount. To create one for the workload, or to use an
+existing one:
+
+```yaml
+serviceAccount:
+  create: true
+  annotations:
+    example.test/role: my-app
+  automountServiceAccountToken: false
+```
+
+```yaml
+serviceAccount:
+  name: existing-account
+```
+
+`automountServiceAccountToken` is left unset unless you set it, so a workload that talks to the Kubernetes
+API keeps its token. Set it to `false` for one that does not.
+
+## Secrets
+
+Secret values never pass through this chart. [`externalSecrets`](./configuration.mdx#secrets)
+references entries in an external store, and the External Secrets Operator creates the Kubernetes Secret.
+Keep values files free of secrets, since they are usually committed.

@@ -1,0 +1,127 @@
+---
+title: Workloads
+description: Deployment, StatefulSet, Job and CronJob.
+---
+
+# Workloads
+
+Enable exactly one of `deployment`, `statefulset`, `job` and `cronjob`. `deployment.enabled` is `true`
+by default, so switching kind means turning it off:
+
+```yaml
+deployment:
+  enabled: false
+job:
+  enabled: true
+```
+
+Enabling two fails the render and says which. Enabling none is allowed: the chart then renders only the
+objects around a workload, such as ConfigMaps.
+
+All four kinds share the same pod: image, command, environment, resources, volumes, security contexts
+and scheduling. What differs is listed below.
+
+## Deployment
+
+The default. Ports and probes are rendered into the container.
+
+```yaml
+replicaCount: 3
+
+deployment:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+  revisionHistoryLimit: 3
+  minReadySeconds: 10
+```
+
+`replicaCount: 0` is honoured, which is how you scale a workload to zero from a values file. While
+[autoscaling](./scaling.mdx) is enabled the chart leaves `replicas` out, so it does not
+fight the autoscaler.
+
+## StatefulSet
+
+```yaml
+deployment:
+  enabled: false
+statefulset:
+  enabled: true
+  podManagementPolicy: Parallel
+  headlessService:
+    enabled: true
+  volumeClaimTemplates:
+    data:
+      mountPath: /var/lib/data
+      accessModes: [ReadWriteOnce]
+      storage: 10Gi
+```
+
+**`volumeClaimTemplates`** give every replica its own volume, named `data-<release>-<index>`, and mount
+it at `mountPath`. This is what you want for replicated state. A standalone `persistentVolumeClaims`
+entry is a single volume shared by every replica, which suits a StatefulSet with one replica.
+
+**The governing Service** is named by `statefulset.serviceName`. It defaults to the release name, which
+is the ordinary Service, so an existing StatefulSet keeps working. With `headlessService.enabled` the
+chart also renders `<release>-headless` (shortened if needed to stay within 63 characters), with or without
+ports, and uses it as the default instead.
+
+> **Warning.** `serviceName` and `volumeClaimTemplates` cannot be changed on an existing StatefulSet.
+> Turning on `headlessService` for one that already exists changes the default `serviceName`, so set
+> `serviceName` explicitly to the current value first.
+
+## Job
+
+```yaml
+deployment:
+  enabled: false
+service:
+  enabled: false
+job:
+  enabled: true
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  activeDeadlineSeconds: 1800
+  restartPolicy: Never
+  annotations:
+    example.test/hook: pre-sync
+command: ["/app/migrate"]
+```
+
+A Job renders no ports or probes. Annotations on the Job are the place for GitOps sync hooks.
+`backoffLimit: 0` means no retries. Leave a field empty (`""`) to leave it out and use the Kubernetes default.
+
+A Job's pod template is immutable, so a change to a Job that has already run has to replace it: use your
+GitOps tool's replace or delete-before-create option, or give `ttlSecondsAfterFinished` a value so finished
+Jobs are cleaned up.
+
+## CronJob
+
+```yaml
+deployment:
+  enabled: false
+service:
+  enabled: false
+cronjob:
+  enabled: true
+  schedule: "0 2 * * *"
+  timeZone: UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  activeDeadlineSeconds: 1800
+```
+
+`schedule` is required. `concurrencyPolicy` defaults to `Forbid`, which skips a run while the previous one
+is still going: the safe choice for backups and other work that must not overlap.
+`startingDeadlineSeconds` defaults to 300, which also avoids the controller giving up on a CronJob that
+has missed too many runs. `suspend: true` pauses scheduling without removing anything. `timeZone` needs
+Kubernetes 1.27 or later, which is the minimum the chart supports.
+
+Annotations under `cronjob.annotations` go on the CronJob, not on the Jobs it creates.
+
+## Zero values
+
+For every numeric setting, `0` means zero. `job.backoffLimit: 0`, `replicaCount: 0` and
+`cronjob.successfulJobsHistoryLimit: 0` are rendered as written, and an empty string leaves a field out.
